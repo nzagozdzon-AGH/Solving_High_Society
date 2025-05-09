@@ -18,7 +18,6 @@ from sb3_contrib.common.maskable.policies import MaskableMultiInputActorCriticPo
 from sb3_contrib.common.wrappers import ActionMasker
 
 # Local application/library specific imports
-# Assuming HighSocietyEnv is defined in Gym_Environment.py and handles action masking
 from Gym_Environment import HighSocietyEnv
 
 # --- Constants ---

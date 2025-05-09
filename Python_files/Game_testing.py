@@ -3,7 +3,7 @@ from agents import HumanAgent, RandomAI, RulesBasedAgent, RLagent
 from Gym_Environment import HighSocietyEnv
 from sb3_contrib import MaskablePPO
 
-model = MaskablePPO.load(r"D:\Code and other stuff\Projekty\High Society, solving the game\model_checkpoints\high_society_trained_final.zip")
+model = MaskablePPO.load("../model_checkpoints/high_society_trained_final.zip")
 env = HighSocietyEnv()
 env.reset()
 

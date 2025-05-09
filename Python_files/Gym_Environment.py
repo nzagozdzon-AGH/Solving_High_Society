@@ -1,5 +1,5 @@
-import gymnasium as gym
-from gymnasium import spaces
+import gymnasium as gym # type: ignore
+from gymnasium import spaces # type: ignore
 import random
 import numpy as np
 from typing import Optional, Dict, Tuple
