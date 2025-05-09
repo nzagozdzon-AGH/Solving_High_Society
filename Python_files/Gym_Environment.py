@@ -174,8 +174,9 @@ class HighSocietyEnv(gym.Env):
             if rl_player:
                 state = self.game.get_game_state(rl_player)
                 money_spent = 106 - (state["current_player_money"] + state["current_player_bid"])
-                return (float(state["current_player_score"] - (money_spent/5))) / 440
-            return 0.0
+                return (float(state["current_player_score"] - (money_spent/10))) / 30
+            else:
+                return 0.0
 
     def _empty_observation(self):
         return {

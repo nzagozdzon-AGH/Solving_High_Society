@@ -27,15 +27,15 @@ FINAL_MODEL_SAVE_NAME = "high_society_trained_final"
 
 # Hyperparameters
 LEARNING_RATE = 3e-4
-ENTHROPY = 0.1 # How much model explores (def = 0.01)
+ENTHROPY = 0.05 # How much model explores (def = 0.01)
 N_STEPS = 64 # After how many actions agent learns
 BATCH_SIZE = 32 # Size of mini batch, so AI can quicker compute new nural network weights
 N_EPOCHS = 4 # How many times it takes information from batches
-FEATURES_DIM = 128  # Output dimension of the feature extractor
-NET_ARCH_PI = [128, 128]  # Policy network architecture after feature extraction
-NET_ARCH_VF = [128, 128]  # Value network architecture after feature extraction
-TOTAL_TIMESTEPS = 300_000
-CHECKPOINT_SAVE_FREQ = 100000 # How often to save model
+FEATURES_DIM = 256  # Output dimension of the feature extractor
+NET_ARCH_PI = [256, 256]  # Policy network architecture after feature extraction
+NET_ARCH_VF = [256, 256]  # Value network architecture after feature extraction
+TOTAL_TIMESTEPS = 200_000
+CHECKPOINT_SAVE_FREQ = 500_000 # How often to save model
 
 
 

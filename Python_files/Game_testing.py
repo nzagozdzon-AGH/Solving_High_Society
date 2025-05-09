@@ -3,7 +3,7 @@ from agents import HumanAgent, RandomAI, RulesBasedAgent, RLagent
 from Gym_Environment import HighSocietyEnv
 from sb3_contrib import MaskablePPO
 
-model = MaskablePPO.load("../model_checkpoints/high_society_trained_final.zip")
+model = MaskablePPO.load("model_checkpoints/high_society_trained_final.zip")
 env = HighSocietyEnv()
 env.reset()
 
@@ -51,4 +51,4 @@ def play_one_round():
     game.play_game()
 
 if __name__ == "__main__":
-    check_winrate()
+    play_one_round()
