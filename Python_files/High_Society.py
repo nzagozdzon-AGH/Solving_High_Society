@@ -121,6 +121,7 @@ class HighSocietyGame:
                         logger.debug(f"{player['player_name']} won the bid")
                         logger.debug(f"He bidded {self.current_bid}")
                         player['hand'].append(self.bidding_card)
+                        player['score'] = self.calculate_scores(player)
                         self.bidding_card = None
                         self.current_starting_index = self.players.index(player)
                         return
@@ -166,6 +167,7 @@ class HighSocietyGame:
                 if (player['player_state'] == 'pass'):
                     logger.debug(f"He gains {self.bidding_card}")
                     player['hand'].append(self.bidding_card)
+                    player['score'] = self.calculate_scores(player)
                     self.current_starting_index = self.players.index(player)
 
                     for enemy in self.players:
@@ -185,7 +187,7 @@ class HighSocietyGame:
         "current_player_score": self.calculate_scores(player),
 
         "other_players_states": [
-            {'score' : self.calculate_scores(p), 'money' : sum(p['money'])}
+            {'score' : p['score'], 'money' : sum(p['money'])}
             for p in self.players if p != player # for every other player different than one caliing this function
         ],
 

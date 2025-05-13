@@ -6,6 +6,7 @@ from typing import Optional, Dict, Tuple
 from High_Society import HighSocietyGame
 from agents import RandomAI, RLagent
 
+
 class HighSocietyEnv(gym.Env):
     ALL_MONEY_CARDS = [1, 2, 3, 4, 6, 8, 10, 12, 15, 20, 25]
     CARD_ENCODING = {
@@ -30,6 +31,7 @@ class HighSocietyEnv(gym.Env):
         self.action_space = spaces.Discrete(len(self.possible_moves))
         self.observation_space = self._create_observation_space()
         self.game = None
+        self.mask = np.zeros(self.action_space.n, dtype=np.float32) # Mask for masking actions. It's here initialized to save computation time.
 
     def _create_move_mapping(self):
         return {
@@ -91,7 +93,7 @@ class HighSocietyEnv(gym.Env):
 
     def _create_action_mask(self):
         # Initialize mask with zeros for all possible actions
-        mask = np.zeros(self.action_space.n, dtype=np.float32)
+        mask = self.mask
         
         # If game hasn't started or is over, return all-zero mask
         if not self.game.players:

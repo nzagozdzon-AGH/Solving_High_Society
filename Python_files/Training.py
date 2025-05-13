@@ -12,7 +12,7 @@ import random
 
 from stable_baselines3.common.callbacks import CheckpointCallback
 from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
-from stable_baselines3.common.vec_env import DummyVecEnv
+from stable_baselines3.common.vec_env import SubprocVecEnv # He is speeding up the training
 from sb3_contrib import MaskablePPO
 from sb3_contrib.common.maskable.policies import MaskableMultiInputActorCriticPolicy
 from sb3_contrib.common.wrappers import ActionMasker
@@ -34,7 +34,7 @@ N_EPOCHS = 4 # How many times it takes information from batches
 FEATURES_DIM = 256  # Output dimension of the feature extractor
 NET_ARCH_PI = [256, 256]  # Policy network architecture after feature extraction
 NET_ARCH_VF = [256, 256]  # Value network architecture after feature extraction
-TOTAL_TIMESTEPS = 200_000
+TOTAL_TIMESTEPS = 100_000
 CHECKPOINT_SAVE_FREQ = 500_000 # How often to save model
 
 
@@ -102,27 +102,32 @@ class CustomFeaturesExtractor(BaseFeaturesExtractor):
         return self.shared_net(concatenated)
 
 
+def make_env(env_id, rank, seed=0): #Utility function for multiprocessed env.
+    def _init():
+        # Create your environment instance inside this function
+        # Pass seed + rank to the environment reset for reproducibility
+        env = HighSocietyEnv(num_players=random.randint(3, 5))
+
+        # Apply wrappers *inside* _init()
+        def mask_fn(env):
+             return env.unwrapped._create_action_mask()
+        env = ActionMasker(env, mask_fn)
+
+        # Call reset here with seed
+        env.reset(seed=seed + rank) # Use a unique seed for each environment instance
+
+        return env
+    return _init
+
 def train_agent():
-    """
-    Sets up and trains the MaskablePPO agent.
-    """
-    print("Initializing environment...")
-    # Create and wrap the environment
+    n_envs = 4 # For Standard_F4s_v2 (my CPU)
+
+    print(f"Creating {n_envs} parallel environments...")
+    env = SubprocVecEnv([make_env("HighSocietyEnv", i, seed=0) for i in range(n_envs)])
 
     print("Setting up policy and model...")
 
-    def mask_fn(env):
-        # Get the action mask from the environment
-        return env.unwrapped._create_action_mask()
-    # Policy keyword arguments
-    # Specifies the custom feature extractor and the network architecture
-    # for the policy (pi) and value (vf) functions after feature extraction.
 
-    env = HighSocietyEnv(num_players=random.randint(3,5))
-    # Wrap with ActionMasker first
-    env = ActionMasker(env, mask_fn)
-    # Then wrap with DummyVecEnv
-    env = DummyVecEnv([lambda: env])
 
     policy_kwargs = dict(
         features_extractor_class=CustomFeaturesExtractor,
