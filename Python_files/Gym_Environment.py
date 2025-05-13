@@ -159,16 +159,16 @@ class HighSocietyEnv(gym.Env):
 
     def _calculate_reward(self, done):
         if self.game._terminate_episode == True:
-            return -10.0
+            return -100.0
         
         elif done:
             if isinstance(self.game.winner['agent'], RLagent): # Checks if winner is RLagent
                 if max(self.game.players_scores) == 0: # Blocks strategy of winning by always passing
-                    return -0.15
+                    return -100.0
                 else:
                     return 1.0 
             else:
-                return -0.25
+                return -10.0
         
         else:
             # Find the player with RLagent

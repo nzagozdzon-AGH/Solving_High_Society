@@ -34,7 +34,7 @@ N_EPOCHS = 4 # How many times it takes information from batches
 FEATURES_DIM = 256  # Output dimension of the feature extractor
 NET_ARCH_PI = [256, 256]  # Policy network architecture after feature extraction
 NET_ARCH_VF = [256, 256]  # Value network architecture after feature extraction
-TOTAL_TIMESTEPS = 100_000
+TOTAL_TIMESTEPS = 1_000_000
 CHECKPOINT_SAVE_FREQ = 500_000 # How often to save model
 
 

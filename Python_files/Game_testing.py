@@ -12,7 +12,6 @@ ai_agent_list = [
     RLagent(model, env),
     RandomAI(),
     RandomAI(),
-    RandomAI(),
     ]
 
 def get_names(list = ai_agent_list):
@@ -38,13 +37,35 @@ def get_names(list = ai_agent_list):
 
 
 def check_winrate():
-    game = HighSocietyGame(player_names=get_names(), ai_agents=ai_agent_list, debug_output=False)
-    winrate = 0
-    for i in range (1000):
-        game.play_game()  # Start the game loop
-        if isinstance(game.winner['agent'], RLagent):
-            winrate +=1
-    print(f"Winrate is {winrate/1000}")
+    original_agents = ai_agent_list.copy()
+    winrates = {}
+    
+    for num_players in [3, 4, 5]:
+        # Reset ai_agent_list to original state
+        ai_agent_list.clear()
+        ai_agent_list.extend(original_agents)
+        
+        # Fill remaining slots with RandomAI
+        while len(ai_agent_list) < num_players:
+            ai_agent_list.append(RandomAI())
+            
+        game = HighSocietyGame(player_names=get_names(), ai_agents=ai_agent_list, debug_output=False)
+        winrate = 0
+        total_games = 1000
+        
+        for _ in range(total_games):
+            game.play_game()
+            if isinstance(game.winner['agent'], RLagent):
+                winrate += 1
+                
+        winrates[num_players] = winrate/total_games
+        print(f"Winrate in {num_players}-player game: {winrate/total_games:.3f}")
+    
+    # Restore original ai_agent_list
+    ai_agent_list.clear()
+    ai_agent_list.extend(original_agents)
+    
+    return winrates
 
 def play_one_round():
     game = HighSocietyGame(player_names=get_names(), ai_agents=ai_agent_list, debug_output=True)
