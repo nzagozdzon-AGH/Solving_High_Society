@@ -143,7 +143,7 @@ def train_agent():
         n_steps=N_STEPS,
         batch_size=BATCH_SIZE,
         n_epochs=N_EPOCHS,
-        device="auto" # Automatically detect and use GPU if available
+        device="cpu" # Force CPU usage
     )
 
     print("Setting up callbacks...")
