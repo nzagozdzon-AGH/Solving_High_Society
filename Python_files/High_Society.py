@@ -33,10 +33,15 @@ class HighSocietyGame:
         self.players_scores = []  # List to store players scores
         self.players_money = []  # List to store sums of players money
         self.current_starting_index = 0 # Will be used to set bidding order for the auciton
+        self.number_of_red_cards = 4 # Number of cards used to determine if the game is over
 
+        # FUNCTIONALITY FOR RL AGENT
         self.current_player = None # Tracks current player for RL in gym Enviroment
         self.winner = None # Tracks who won for RL in gym Enviroment
         self._terminate_episode = False  # Ends game if RL agent failed to make proper move
+        self.poorest_player = {'money': [1, 2, 3, 4, 6, 8, 10, 12, 15, 20, 25], 'score': 0, 'agent': None} # Player with the least money left
+        self.player_with_highest_score = {'money': [1, 2, 3, 4, 6, 8, 10, 12, 15, 20, 25], 'score': 0, 'agent': None} # Player with the highest score
+        self.highest_score_non_lowest_money = {'money': [1, 2, 3, 4, 6, 8, 10, 12, 15, 20, 25], 'score': 0, 'agent': None} # Player with the highest score, but not the lowest money
 
         self.players = [] # Initialize players with their hands and money
         for i in range(players):
@@ -58,6 +63,8 @@ class HighSocietyGame:
 
     def round_start(self):
         self.bidding_card = self.deck_of_cards.pop(0)  # Draw the first card for bidding
+        if self.bidding_card in ['double', 'half']:
+            self.number_of_red_cards -= 1
         if self.is_game_over() == True:
             logger.debug("Game Over")
             for player in self.players:
@@ -111,7 +118,24 @@ class HighSocietyGame:
             else:
                 self.bad_cards_auction(current_order)
 
-                
+    def update_poorest_player_and_highest_score(self, player):
+        if len(player['money']) == 1: # If player has only one money card
+            player_money = player['money'][0] # Then using sum doesn't work
+        else:
+            player_money = sum(player['money'])
+
+        if len(self.poorest_player['money']) == 1: # Same as above
+            poorest_player_money = self.poorest_player['money'][0]
+        else:
+            poorest_player_money = sum(self.poorest_player['money'])
+
+        if player_money < poorest_player_money:
+            self.poorest_player = player
+        if player['score'] > self.player_with_highest_score['score']:
+            self.player_with_highest_score = player
+        if (player['score'] > self.highest_score_non_lowest_money['score']) and player_money > poorest_player_money:
+            self.highest_score_non_lowest_money = player
+
     def good_cards_auction(self, current_order):
         while self.bidding_card != None:
             for player in current_order:
@@ -122,6 +146,9 @@ class HighSocietyGame:
                         logger.debug(f"He bidded {self.current_bid}")
                         player['hand'].append(self.bidding_card)
                         player['score'] = self.calculate_scores(player)
+
+                        self.update_poorest_player_and_highest_score(player) # Update player with the highest score and the poorest player
+
                         self.bidding_card = None
                         self.current_starting_index = self.players.index(player)
                         return
@@ -171,6 +198,8 @@ class HighSocietyGame:
                     self.current_starting_index = self.players.index(player)
 
                     for enemy in self.players:
+                        # Update player with the highest score and the poorest player
+                        self.update_poorest_player_and_highest_score(enemy)
                         if enemy != player:
                             logger.debug(f"Player {self.players.index(enemy)}'s paid: {sum(enemy['cards_bidded'])}")
                     return
@@ -184,14 +213,13 @@ class HighSocietyGame:
         "current_player_bid": sum(player['cards_bidded']),
         "current_player_money": sum(player['money']),
         "current_player_hand": player['hand'],
-        "current_player_score": self.calculate_scores(player),
+        "current_player_score": player['score'],
 
-        "other_players_states": [
-            {'score' : p['score'], 'money' : sum(p['money'])}
-            for p in self.players if p != player # for every other player different than one caliing this function
-        ],
+        "highest_score": self.player_with_highest_score['score'],
+        "poorest_player_money": sum(self.poorest_player['money']),
+        "score_of_winner": self.highest_score_non_lowest_money['score'],
 
-        "remaining_deck_size": len(self.deck_of_cards),
+        "number_of_red_cards": self.number_of_red_cards,
         }
     
     def get_legal_moves(self, player):
@@ -260,7 +288,7 @@ class HighSocietyGame:
         if self._terminate_episode == True:
             logger.debug("Game ends, becouse RLagent made invalid move")
             return True
-        return not ('double' in self.deck_of_cards or 'half' in self.deck_of_cards) # Returns True if there are no more doubles and and halfs in the deck
+        return self.number_of_red_cards == 0 # Returns True if there are no more doubles and and halfs in the deck
 
     def calculate_scores(self, player):
         score = 0

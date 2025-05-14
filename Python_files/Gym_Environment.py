@@ -42,14 +42,16 @@ class HighSocietyEnv(gym.Env):
     def _create_observation_space(self):
         return spaces.Dict({
             "action_mask": spaces.Box(0, 1, shape=(self.action_space.n,), dtype=np.float32),
-            "num_players": spaces.Discrete(4),
+            "num_players": spaces.Discrete(3),
             "current_bid": spaces.Box(0, 1, shape=(1,), dtype=np.float32),
             "bidding_card": spaces.Discrete(14),
             "player_money": spaces.Box(0, 1, shape=(1,), dtype=np.float32),
             "player_hand": spaces.Box(0, 1, shape=(14,), dtype=np.float32),
             "player_score": spaces.Box(0, 1, shape=(1,), dtype=np.float32),
-            "other_players": spaces.Box(0, 1, shape=(4, 2), dtype=np.float32),
-            "deck_remaining": spaces.Box(0, 1, shape=(1,), dtype=np.float32),
+            "highest_score": spaces.Box(0, 1, shape=(1,), dtype=np.float32),
+            "poorest_money": spaces.Box(0, 1, shape=(1,), dtype=np.float32),
+            "score_of_winner": spaces.Box(0, 1, shape=(1,), dtype=np.float32),
+            "red_cards": spaces.Box(0, 1, shape=(1,), dtype=np.float32),
         })
 
     def _get_observation(self):
@@ -58,16 +60,6 @@ class HighSocietyEnv(gym.Env):
             
         raw_state = self.game.get_game_state(self.game.current_player)
 
-        # Build mask, that will hold 0 for non existent players
-        other_players = np.zeros((4, 2), dtype=np.float32)
-        
-        # Filling table with information about other players
-        for i, p in enumerate(raw_state["other_players_states"]): 
-            other_players[i] = [
-                p['score'] / 440,  # Normalized score
-                p['money'] / 106   # Normalized money (max 1+2+...+25=106)
-            ]
-            
         return {
             "action_mask": self._create_action_mask(),
             "num_players": self.num_players - 3,
@@ -76,8 +68,10 @@ class HighSocietyEnv(gym.Env):
             "player_money": np.array([raw_state["current_player_money"] / 106], dtype=np.float32),
             "player_hand": self._encode_hand(raw_state["current_player_hand"]),
             "player_score": np.array([raw_state["current_player_score"] / 440], dtype=np.float32),
-            "other_players": other_players,
-            "deck_remaining": np.array([raw_state["remaining_deck_size"] / 16], dtype=np.float32),
+            "highest_score": np.array([raw_state["highest_score"] / 440], dtype=np.float32),
+            "poorest_money": np.array([raw_state["poorest_player_money"] / 106], dtype=np.float32),
+            "score_of_winner": np.array([raw_state["score_of_winner"] / 440], dtype=np.float32),
+            "red_cards": np.array([raw_state["number_of_red_cards"] / 4], dtype=np.float32),
         }
 
     def _generate_all_possible_moves(self):
@@ -158,7 +152,7 @@ class HighSocietyEnv(gym.Env):
         return obs, reward, done, False, {}
 
     def _calculate_reward(self, done):
-        if self.game._terminate_episode == True:
+        if self.game._terminate_episode == True: # Punishment for illegal moves
             return -100.0
         
         elif done:
@@ -166,17 +160,20 @@ class HighSocietyEnv(gym.Env):
                 if max(self.game.players_scores) == 0: # Blocks strategy of winning by always passing
                     return -100.0
                 else:
-                    return 1.0 
+                    return 1.0
             else:
-                return -10.0
+                return -5.0
         
         else:
-            # Find the player with RLagent
-            rl_player = next((player for player in self.game.players if isinstance(player['agent'], RLagent)), None)
-            if rl_player:
-                state = self.game.get_game_state(rl_player)
-                money_spent = 106 - (state["current_player_money"] + state["current_player_bid"])
-                return (float(state["current_player_score"] - (money_spent/10))) / 30
+            if isinstance(self.game.highest_score_non_lowest_money['agent'], RLagent):
+                return 0.1
+            elif isinstance(self.game.poorest_player['agent'], RLagent):
+                if isinstance(self.game.player_with_highest_score['agent'], RLagent):
+                    if self.game.number_of_red_cards == 1:
+                        return -0.1
+                    return 0.0
+                else:
+                    return -0.1 * (1/self.game.number_of_red_cards)
             else:
                 return 0.0
 

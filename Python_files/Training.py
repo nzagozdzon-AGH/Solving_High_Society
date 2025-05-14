@@ -28,8 +28,8 @@ FINAL_MODEL_SAVE_NAME = "high_society_trained_final"
 # Hyperparameters
 LEARNING_RATE = 3e-4
 ENTHROPY = 0.05 # How much model explores (def = 0.01)
-N_STEPS = 64 # After how many actions agent learns
-BATCH_SIZE = 32 # Size of mini batch, so AI can quicker compute new nural network weights
+N_STEPS = 16 # After how many actions agent learns
+BATCH_SIZE = 8 # Size of mini batch, so AI can quicker compute new nural network weights
 N_EPOCHS = 4 # How many times it takes information from batches
 FEATURES_DIM = 256  # Output dimension of the feature extractor
 NET_ARCH_PI = [256, 256]  # Policy network architecture after feature extraction
@@ -45,15 +45,17 @@ class CustomFeaturesExtractor(BaseFeaturesExtractor):
         
         # Update sizes to match actual tensor shapes
         self.obs_sizes = {
-            "action_mask": 562,  # Matches actual shape from error
-            "num_players": 16,   # From one-hot encoding (4x4)
-            "current_bid": 1,    # Single value
-            "bidding_card": 196, # From actual shape
-            "player_money": 1,   # Single value
-            "player_hand": 14,   # Binary vector
-            "player_score": 1,   # Single value
-            "other_players": 8,  # 4 players × 2 values
-            "deck_remaining": 1  # Single value
+            "action_mask": 562,
+            "num_players": 3,
+            "current_bid": 1,
+            "bidding_card": 14,
+            "player_money": 1,
+            "player_hand": 14,
+            "player_score": 1,
+            "highest_score": 1,  # Single value for highest score
+            "poorest_money": 1,
+            "score_of_winner": 1,
+            "red_cards": 1
         }
         
         self.total_dim = sum(self.obs_sizes.values())
@@ -67,38 +69,60 @@ class CustomFeaturesExtractor(BaseFeaturesExtractor):
         )
 
     def forward(self, observations: Dict[str, torch.Tensor]) -> torch.Tensor:
+        """
+        Processes the dictionary observations and concatenates them.
+        Ensures all tensors are 2D (batch_size, feature_size) before concatenation.
+        """
         processed = []
-        
-        for key in [
+
+        # Define the order of keys for processing and concatenation
+        obs_order = [
             "action_mask", "num_players", "current_bid",
             "bidding_card", "player_money", "player_hand",
-            "player_score", "other_players", "deck_remaining"
-        ]:
+            "player_score", "highest_score", "poorest_money",
+            "score_of_winner", "red_cards"
+        ]
+
+        for key in obs_order:
             tensor = observations[key]
             if isinstance(tensor, np.ndarray):
                 tensor = torch.as_tensor(tensor, device=self.device)
-                
-            # Handle different space types
+            tensor = tensor.float()
+
             if key == "num_players":
-                tensor = F.one_hot(tensor.long(), num_classes=4).float()
+                # Robust handling for one-hot or scalar
+                if tensor.dim() == 3 and tensor.shape[1] == 1 and tensor.shape[2] == 3:
+                    tensor = tensor.view(tensor.size(0), 3)
+                elif tensor.dim() == 2 and tensor.shape[1] == 3:
+                    pass
+                else:
+                    tensor = tensor.squeeze(-1)
+                    tensor = F.one_hot(tensor.long(), num_classes=3).float()
+                # shape: [batch_size, 3]
             elif key == "bidding_card":
-                tensor = F.one_hot(tensor.long(), num_classes=14).float()
-            
-            # Flatten and ensure 2D
-            if tensor.dim() > 2:
-                tensor = tensor.reshape(tensor.size(0), -1)
-            elif tensor.dim() == 1:
-                tensor = tensor.unsqueeze(0)
-                
+                # Robust handling for one-hot or scalar
+                if tensor.dim() == 3 and tensor.shape[1] == 1 and tensor.shape[2] == 14:
+                    tensor = tensor.view(tensor.size(0), 14)
+                elif tensor.dim() == 2 and tensor.shape[1] == 14:
+                    pass
+                else:
+                    tensor = tensor.squeeze(-1)
+                    tensor = F.one_hot(tensor.long(), num_classes=14).float()
+                # shape: [batch_size, 14]
+            elif key in ["action_mask", "player_hand"]:
+                if tensor.dim() == 1:
+                    tensor = tensor.unsqueeze(1)
+            else:
+                if tensor.dim() == 1:
+                    tensor = tensor.unsqueeze(1)
+                elif tensor.dim() > 2:
+                    tensor = tensor.view(tensor.size(0), -1)
+
             processed.append(tensor)
-            
-        # Concatenate all processed tensors
+
+        processed = [t if t.dim() == 2 else t.view(t.size(0), -1) for t in processed]
         concatenated = torch.cat(processed, dim=1)
-        
-        # Ensure correct shape for network
-        if concatenated.size(1) != self.total_dim:
-            raise ValueError(f"Input dimension mismatch. Expected {self.total_dim}, got {concatenated.size(1)}")
-        
+        assert concatenated.size(1) == self.total_dim, f"Concatenated dimension mismatch. Expected {self.total_dim}, got {concatenated.size(1)}"
         return self.shared_net(concatenated)
 
 

@@ -9,7 +9,8 @@ env.reset()
 
 
 ai_agent_list = [
-    RLagent(model, env),
+    RulesBasedAgent(),
+    # RLagent(model, env),
     RandomAI(),
     RandomAI(),
     ]
@@ -55,7 +56,7 @@ def check_winrate():
         
         for _ in range(total_games):
             game.play_game()
-            if isinstance(game.winner['agent'], RLagent):
+            if isinstance(game.winner['agent'], RulesBasedAgent):
                 winrate += 1
                 
         winrates[num_players] = winrate/total_games
