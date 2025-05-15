@@ -1,7 +1,6 @@
 # Building High Scoiety by Reiner Knizia
 
 import random # To shuffle deck
-from collections import Counter # To handle dupliactes in lists
 import itertools # To gain all possible combinations of bids
 import logging
 from agents import RLagent
@@ -21,189 +20,146 @@ class HighSocietyGame:
         self.debug_output = debug_output
         logger.setLevel(logging.DEBUG if debug_output else logging.ERROR)
 
-    def play_game(self):
+    def start_game(self):
+        # Initialize game state, but do not play the full game loop
         player_names = self.player_names
         ai_agents = self.ai_agents
         players = len(ai_agents)
-        self.deck_of_cards = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, -5, 'double', 'double', 'double', 'half', 'drop_card']  # Deck of cards to bid for
-        self.all_game_cards = self.deck_of_cards.copy() # It is used later to determine cards left in deck, without giving information about order of cards in deck
-        random.shuffle(self.deck_of_cards)  # Shuffle the actual deck
-        self.current_bid = 0 # The current bid amount
-        self.bidding_card = None  # The card currently up for bidding
-        self.players_scores = []  # List to store players scores
-        self.players_money = []  # List to store sums of players money
-        self.current_starting_index = 0 # Will be used to set bidding order for the auciton
-        self.number_of_red_cards = 4 # Number of cards used to determine if the game is over
-
-        # FUNCTIONALITY FOR RL AGENT
-        self.current_player = None # Tracks current player for RL in gym Enviroment
-        self.winner = None # Tracks who won for RL in gym Enviroment
-        self._terminate_episode = False  # Ends game if RL agent failed to make proper move
-        self.poorest_player = {'money': [1, 2, 3, 4, 6, 8, 10, 12, 15, 20, 25], 'score': 0, 'agent': None} # Player with the least money left
-        self.player_with_highest_score = {'money': [1, 2, 3, 4, 6, 8, 10, 12, 15, 20, 25], 'score': 0, 'agent': None} # Player with the highest score
-        self.highest_score_non_lowest_money = {'money': [1, 2, 3, 4, 6, 8, 10, 12, 15, 20, 25], 'score': 0, 'agent': None} # Player with the highest score, but not the lowest money
-
-        self.players = [] # Initialize players with their hands and money
+        self.deck_of_cards = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, -5, 'double', 'double', 'double', 'half', 'drop_card']
+        self.all_game_cards = self.deck_of_cards.copy()
+        random.shuffle(self.deck_of_cards)
+        self.current_bid = 0
+        self.bidding_card = None
+        self.players_scores = []
+        self.players_money = []
+        self.current_starting_index = 0
+        self.number_of_red_cards = 4
+        self.current_player = None
+        self.winner = None
+        self._terminate_episode = False
+        self.poorest_player = {'money': [1, 2, 3, 4, 6, 8, 10, 12, 15, 20, 25], 'score': 0, 'agent': None}
+        self.player_with_highest_score = {'money': [1, 2, 3, 4, 6, 8, 10, 12, 15, 20, 25], 'score': 0, 'agent': None}
+        self.highest_score_non_lowest_money = {'money': [1, 2, 3, 4, 6, 8, 10, 12, 15, 20, 25], 'score': 0, 'agent': None}
+        self.players = []
         for i in range(players):
             self.players.append({
                 'player_name': player_names[i],
-                'hand': [], # Cards one got during game
-                'money': [1, 2, 3, 4, 6, 8, 10, 12, 15, 20, 25],  # Starting money
-                'score': 0, # Final score of a player
-                'player_state' : 'bidding', # Its bidding or pass
-                'cards_bidded' : [], # Cards player used to bid in given round
-                'agent': ai_agents[i],  # For AI integration
+                'hand': [],
+                'money': [1, 2, 3, 4, 6, 8, 10, 12, 15, 20, 25],
+                'score': 0,
+                'player_state': 'bidding',
+                'cards_bidded': [],
+                'agent': ai_agents[i],
             })
-        # Starts the game loop
-        while not self.is_game_over():
-            self.round_start()
+        self.round_active = False
 
-
-
-
-    def round_start(self):
-        self.bidding_card = self.deck_of_cards.pop(0)  # Draw the first card for bidding
+    def start_round(self):
+        self.bidding_card = self.deck_of_cards.pop(0)
         if self.bidding_card in ['double', 'half']:
             self.number_of_red_cards -= 1
-        if self.is_game_over() == True:
-            logger.debug("Game Over")
-            for player in self.players:
-                player['score'] = self.calculate_scores(player)
-                logger.debug(f"{player['player_name']} has score: {player['score']}")
-                self.players_money.append(sum(player['money']))
+        # Check for game end after drawing a red card
+        if self.is_game_over():
+            self.finishing_game()
+            return
+        self.current_bid = 0
+        for player in self.players:
+            player['player_state'] = 'bidding'
+            player['cards_bidded'] = []
+            player['money'].sort()
+        self.round_active = True
+        self.current_order = (
+            self.players[self.current_starting_index:]
+            + self.players[:self.current_starting_index]
+        )
+        self.current_order_index = 0
+        self.current_player = self.current_order[self.current_order_index]
+        logger.debug(f"\n--- New Round ---")
+        logger.debug(f"Card up for bidding: {self.bidding_card}")
+        logger.debug(f"Players:")
+        for p in self.players:
+            logger.debug(f"  {p['player_name']} | Money: {p['money']} | Hand: {p['hand']}")
 
-            for player in self.players:
-                if sum(player['money']) == min(self.players_money):
-                    player['score'] -= 1000
-                    logger.debug(f"{player['player_name']} spent the most money and is out of the game")
-
-                self.players_scores.append(player['score']) 
-
-            for player in self.players:
-                if player['score'] == max(self.players_scores):
-                    if self.winner != None: # Handling ties
-                        if sum(player['money']) > sum(self.winner['money']): # Player with more money left wins
-                            self.winner = player
-                            logger.debug(f"{player['player_name']} wins tie with score: {player['score']}")
-                            logger.debug(f"And with cards: {player['hand']}")
-                        elif sum(player['money']) == sum(self.winner['money']): # Player with biggest card wins
-                            max_card = 0
-                            for card in player['hand']:
-                                if (card in [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]) and (card > max_card):
-                                    max_card = card
-                            for card in self.winner['hand']:
-                                if (card in [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]) and (card > max_card):
-                                    max_card = card
-                            if max_card in player['hand']:
-                                self.winner = player
-                                logger.debug(f"{player['player_name']} wins tie with score: {player['score']}")
-                                logger.debug(f"And with cards: {player['hand']}")
-                    else:
-                        self.winner = player
-                        logger.debug(f"{player['player_name']} wins with score: {player['score']}")
-                        logger.debug(f"And with cards: {player['hand']}")
-        else:
-            self.current_bid = 0
-            for player in self.players:
-                player['player_state'] = 'bidding'
-                player['cards_bidded'] = []
-                player['money'].sort()
-
-            current_order = (
-                self.players[self.current_starting_index :]
-                + self.players[: self.current_starting_index])
-
-            if self.bidding_card in [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 'double', 'double', 'double']:
-                self.good_cards_auction(current_order)
+    def step(self, action):
+        player = self.current_player
+        from agents import HumanAgent
+        if isinstance(player['agent'], HumanAgent) and action is None:
+            logger.debug(f"\n{player['player_name']}'s turn | Card: {self.bidding_card} | Current bid: {self.current_bid}")
+            logger.debug(f"Your money: {player['money']} | Your hand: {player['hand']}")
+            logger.debug(f"Your current bid: {sum(player['cards_bidded'])}")
+            return 'awaiting_human', player
+        # After the move, print what the player did
+        result = self.apply_move(player, action)
+        if not result and isinstance(player['agent'], RLagent):
+            logger.debug(f"Illegal move by {player['player_name']}: {action}")
+            self._terminate_episode = True
+            return 'illegal', player
+        if not result:
+            if isinstance(player['agent'], HumanAgent):
+                logger.debug(f"Invalid move by {player['player_name']}: {action}. Please try again.")
+                return 'invalid_human', player
             else:
-                self.bad_cards_auction(current_order)
-
-    def update_poorest_player_and_highest_score(self, player):
-        if len(player['money']) == 1: # If player has only one money card
-            player_money = player['money'][0] # Then using sum doesn't work
+                logger.debug(f"Invalid move by {player['player_name']}: {action}")
+        # Only print bid/pass info after the move
+        if result:
+            if action == 'pass':
+                logger.debug(f"{player['player_name']} passes. Money returned: {player['cards_bidded']}")
+        # Good card logic
+        if self.bidding_card in [1,2,3,4,5,6,7,8,9,10,'double','double','double']:
+            bidding_players = [p for p in self.players if p['player_state'] == 'bidding']
+            if len(bidding_players) == 1:
+                winner = bidding_players[0]
+                winner['hand'].append(self.bidding_card)
+                winner['score'] = self.calculate_scores(winner)
+                self.update_poorest_player_and_highest_score()
+                self.bidding_card = None
+                self.current_starting_index = self.players.index(winner)
+                self.round_active = False
+                logger.debug(f"{winner['player_name']} wins the card {winner['hand'][-1]}! New hand: {winner['hand']}, Score: {winner['score']}")
+                return 'round_end', winner
         else:
-            player_money = sum(player['money'])
+            # Bad card logic
+            if action == 'pass':
+                player['hand'].append(self.bidding_card)
+                player['score'] = self.calculate_scores(player)
+                self.current_starting_index = self.players.index(player)
+                self.bidding_card = None
+                self.update_poorest_player_and_highest_score()
+                self.round_active = False
+                logger.debug(f"{player['player_name']} is forced to take the bad card {player['hand'][-1]}. New hand: {player['hand']}, Score: {player['score']}")
+                return 'round_end', player
+        # Advance to next player
+        self.current_order_index = (self.current_order_index + 1) % len(self.current_order)
+        self.current_player = self.current_order[self.current_order_index]
+        return 'continue', self.current_player
 
-        if len(self.poorest_player['money']) == 1: # Same as above
-            poorest_player_money = self.poorest_player['money'][0]
-        else:
-            poorest_player_money = sum(self.poorest_player['money'])
-
-        if player_money < poorest_player_money:
-            self.poorest_player = player
-        if player['score'] > self.player_with_highest_score['score']:
-            self.player_with_highest_score = player
-        if (player['score'] > self.highest_score_non_lowest_money['score']) and player_money > poorest_player_money:
-            self.highest_score_non_lowest_money = player
-
-    def good_cards_auction(self, current_order):
-        while self.bidding_card != None:
-            for player in current_order:
-                self.current_player = player  # Update current player
-                if player['player_state'] == 'bidding':
-                    if self.check_if_won_bid(player) == True:
-                        logger.debug(f"{player['player_name']} won the bid")
-                        logger.debug(f"He bidded {self.current_bid}")
-                        player['hand'].append(self.bidding_card)
-                        player['score'] = self.calculate_scores(player)
-
-                        self.update_poorest_player_and_highest_score(player) # Update player with the highest score and the poorest player
-
-                        self.bidding_card = None
-                        self.current_starting_index = self.players.index(player)
-                        return
-                    
-                    else:
-                        logger.debug(f"Current bidding card: {self.bidding_card}")
-                        logger.debug(f"Current bid: {self.current_bid}")
-                        logger.debug('')
-                        logger.debug(f"{player['player_name']}'s turn to bid")
-                        logger.debug(f"{player['player_name']}'s hand: {player['hand']}")
-                        logger.debug(f"{player['player_name']}'s money: {player['money']}")
-                        logger.debug(f"{player['player_name']}'s bid: {sum(player['cards_bidded'])}")
-                        logger.debug('')
-
-                        self.player_move(player)
-                else:
-                    logger.debug(f"{player['player_name']} passed")
-
-    def check_if_won_bid(self, player): # Helper function for good cards auction
-        i = 0
-        for enemy in self.players:
-            if enemy != player:
-                if enemy['player_state'] == 'bidding':
-                    i += 1
-        if i == 0:
+    def apply_move(self, player, action):
+        if action == 'pass':
+            player['player_state'] = 'pass'
+            player['money'].extend(player['cards_bidded'])
             return True
-
-    def bad_cards_auction(self, current_order):
-        while self.bidding_card != None:
-            for player in current_order:
-                self.current_player = player  # Update current player
-                logger.debug(f"Current bidding card: {self.bidding_card}")
-                logger.debug(f"Current bid: {self.current_bid}")
-                logger.debug('')
-                logger.debug(f"{player['player_name']}'s turn to bid")
-                logger.debug(f"{player['player_name']}'s hand: {player['hand']}")
-                logger.debug(f"{player['player_name']}'s money: {player['money']}")
-                logger.debug(f"{player['player_name']}'s bid: {sum(player['cards_bidded'])}")
-                logger.debug('')
-
-                self.player_move(player)
-
-                if (player['player_state'] == 'pass'):
-                    logger.debug(f"He gains {self.bidding_card}")
-                    player['hand'].append(self.bidding_card)
-                    player['score'] = self.calculate_scores(player)
-                    self.current_starting_index = self.players.index(player)
-
-                    for enemy in self.players:
-                        # Update player with the highest score and the poorest player
-                        self.update_poorest_player_and_highest_score(enemy)
-                        if enemy != player:
-                            logger.debug(f"Player {self.players.index(enemy)}'s paid: {sum(enemy['cards_bidded'])}")
-                    return
-
+        # Convert string input to list if needed
+        if not isinstance(action, list):
+            try:
+                bid_values = list(map(int, action.replace(' ', '').split(',')))
+            except ValueError:
+                logger.debug(f"Could not parse bid: {action}")
+                return False
+        else:
+            bid_values = action
+        # Validate and apply move
+        if all(value in player['money'] for value in bid_values):
+            if sum(player['cards_bidded']) + sum(bid_values) > self.current_bid:
+                player['cards_bidded'].extend(bid_values)
+                for value in bid_values:
+                    player['money'].remove(value)
+                self.current_bid = sum(player['cards_bidded'])
+                logger.debug(f"{player['player_name']} bids {bid_values} | New bid: {self.current_bid} | Money left: {player['money']}")
+                return True
+            else:
+                logger.debug(f"Bid not high enough. Current bid: {self.current_bid}, Attempted: {sum(player['cards_bidded']) + sum(bid_values)}")
+        else:
+            logger.debug(f"Bid contains invalid money cards: {bid_values} not in {player['money']}")
+        return False
 
     def get_game_state(self, player) -> dict:
         return {
@@ -235,60 +191,71 @@ class HighSocietyGame:
         legal_moves.append('pass')
         return legal_moves
 
-    def player_move(self, player, action = None):
-        self.current_player = player
-        while True:
-            action = player['agent'].choose_action(
-                game_state=self.get_game_state(player),
-                legal_moves=self.get_legal_moves(player),
-            )
-            
-            if self.apply_move(player, action): # If player made proper action
-                if action == 'pass':
-                    logger.debug(f"{player['player_name']} passed")
-                else:
-                    logger.debug(f"Bid accepted! New highest bid: {self.current_bid}")
-                break
+    def update_poorest_player_and_highest_score(self):
+        for player in self.players:
+            if len(player['money']) == 1: # If player has only one money card
+                player_money = player['money'][0] # Then using sum doesn't work
             else:
-                if isinstance(player['agent'], RLagent):
-                    self._terminate_episode = False # Agent failed to make a move, game will end
-                    action = 'pass' # Agent auto passes after making mistake
-                    self.apply_move(player, action)
-                    logger.debug(f"{player['player_name']} passed")
-                    break
-                logger.debug("Invalid bid")
+                player_money = sum(player['money'])
 
+            if len(self.poorest_player['money']) == 1: # Same as above
+                poorest_player_money = self.poorest_player['money'][0]
+            else:
+                poorest_player_money = sum(self.poorest_player['money'])
 
-    def apply_move(self, player, action):
-        if action == 'pass':
-            player['player_state'] = 'pass'
-            player['money'].extend(player['cards_bidded'])
-            return True
-        
-        # Convert string input to list if needed
-        if not isinstance(action, list):
-            try:
-                bid_values = list(map(int, action.replace(' ', '').split(',')))
-            except ValueError:
-                return False
-        else:
-            bid_values = action # If player passed 1 bid
+            if player_money < poorest_player_money:
+                self.poorest_player = player
+            if player['score'] > self.player_with_highest_score['score']:
+                self.player_with_highest_score = player
+            if (player['score'] > self.highest_score_non_lowest_money['score']) and player_money > poorest_player_money:
+                self.highest_score_non_lowest_money = player
 
-        # Validate and apply move
-        if all(value in player['money'] for value in bid_values):
-            if sum(player['cards_bidded']) + sum(bid_values) > self.current_bid:
-                player['cards_bidded'].extend(bid_values)
-                for value in bid_values:
-                    player['money'].remove(value)
-                self.current_bid = sum(player['cards_bidded'])
-                return True
-        return False
+    def is_rl_agent_turn(self): # Returns True if the current player is the RL agent
+        return isinstance(self.current_player['agent'], RLagent)
 
     def is_game_over(self):
         if self._terminate_episode == True:
             logger.debug("Game ends, becouse RLagent made invalid move")
             return True
-        return self.number_of_red_cards == 0 # Returns True if there are no more doubles and and halfs in the deck
+        return self.number_of_red_cards == 0
+
+    def finishing_game(self):
+        logger.debug("\n=== GAME OVER ===")
+        for player in self.players:
+            player['score'] = self.calculate_scores(player)
+            logger.debug(f"{player['player_name']} has score: {player['score']}")
+            self.players_money.append(sum(player['money']))
+
+        for player in self.players:
+            if sum(player['money']) == min(self.players_money):
+                player['score'] -= 1000
+                logger.debug(f"{player['player_name']} spent the most money and is out of the game")
+
+            self.players_scores.append(player['score']) 
+
+        for player in self.players:
+            if player['score'] == max(self.players_scores):
+                if self.winner != None: # Handling ties
+                    if sum(player['money']) > sum(self.winner['money']): # Player with more money left wins
+                        self.winner = player
+                        logger.debug(f"{player['player_name']} wins tie with score: {player['score']}")
+                        logger.debug(f"And with cards: {player['hand']}")
+                    elif sum(player['money']) == sum(self.winner['money']): # Player with biggest card wins
+                        max_card = 0
+                        for card in player['hand']:
+                            if (card in [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]) and (card > max_card):
+                                max_card = card
+                        for card in self.winner['hand']:
+                            if (card in [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]) and (card > max_card):
+                                max_card = card
+                        if max_card in player['hand']:
+                            self.winner = player
+                            logger.debug(f"{player['player_name']} wins tie with score: {player['score']}")
+                            logger.debug(f"And with cards: {player['hand']}")
+                else:
+                    self.winner = player
+                    logger.debug(f"{player['player_name']} wins with score: {player['score']}")
+                    logger.debug(f"And with cards: {player['hand']}")
 
     def calculate_scores(self, player):
         score = 0

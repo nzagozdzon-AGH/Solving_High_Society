@@ -123,31 +123,45 @@ class HighSocietyEnv(gym.Env):
     def reset(self, *, seed: Optional[int] = None, options: Optional[dict] = None) -> Tuple[Dict, Dict]:
         super().reset(seed=seed)
         self.num_players = random.randint(3, 5)
-        # Update player names based on new number of players
         self.player_names = [f"Player_{i}" for i in range(self.num_players)]
         self.ai_agents = [self._create_dummy_agent()]
-        self.ai_agents.extend(RandomAI() for i in range(self.num_players - 1))
+        self.ai_agents.extend(RandomAI() for _ in range(self.num_players - 1))
 
         self.game = HighSocietyGame(
             player_names=self.player_names,
             ai_agents=self.ai_agents,
             debug_output=False
         )
-        self.game._terminate_episode = False  # Resets flag
-        self.game.winner = None # Resets winner
-        self.game.play_game()
+        self.game._terminate_episode = False
+        self.game.winner = None
+        self.game.start_game()  # Use new API
+        # Start the first round
+        if not self.game.is_game_over():
+            self.game.start_round()
         return self._get_observation(), {}
 
     def step(self, action_idx: int) -> Tuple[Dict, float, bool, bool, Dict]:
         move = self.action_to_move[action_idx]
         self._handle_agent_action(move)
-        
         done = False
-        while not done and not self._is_agent_turn():
-            self.game.round_start()
-            done = self.game.is_game_over()
-
+        # Only step if game is not over
+        if not self.game.is_game_over():
+            # RL agent's move
+            result, _ = self.game.step(move)
+            # If round ended, start next round if game not over
+            while result == 'round_end' and not self.game.is_game_over():
+                self.game.start_round()
+                # If after starting round, it's not RL agent's turn, auto-step AIs
+                while not self.game.is_rl_agent_turn() and not self.game.is_game_over():
+                    ai_action = self.game.current_player['agent'].choose_action(
+                        self.game.get_game_state(self.game.current_player),
+                        self.game.get_legal_moves(self.game.current_player)
+                    )
+                    result, _ = self.game.step(ai_action)
+                    if result == 'round_end' and not self.game.is_game_over():
+                        self.game.start_round()
         obs = self._get_observation()
+        done = self.game.is_game_over()
         reward = self._calculate_reward(done)
         return obs, reward, done, False, {}
 
@@ -170,7 +184,7 @@ class HighSocietyEnv(gym.Env):
                 return rl_player['money'] * (-1)
             else:
                 return sum(rl_player['money']) * (-1)
-        else: return 0.0 
+        else: return 0.0
 
 
 
@@ -198,7 +212,7 @@ class HighSocietyEnv(gym.Env):
         class DummyAgent():
             def __init__(self, **kwargs):
                 self.last_action = None
-            def choose_action(self, **kwargs):
+            def choose_action(self, game_state=None, legal_moves=None):
                 return self.last_action or "pass"
         return DummyAgent()
 
