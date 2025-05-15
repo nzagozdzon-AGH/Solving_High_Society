@@ -4,7 +4,7 @@ import random
 import numpy as np
 from typing import Optional, Dict, Tuple
 from High_Society import HighSocietyGame
-from agents import RandomAI, RLagent
+from agents import RandomAI
 
 
 class HighSocietyEnv(gym.Env):
@@ -146,13 +146,25 @@ class HighSocietyEnv(gym.Env):
         done = False
         # Only step if game is not over
         if not self.game.is_game_over():
-            # RL agent's move
             result, _ = self.game.step(move)
+            if result == 'illegal':
+                done = True
+                obs = self._get_observation()
+                reward = self._calculate_reward(done)
+                return obs, reward, done, False, {}
             # If round ended, start next round if game not over
+            round_end_counter = 0
             while result == 'round_end' and not self.game.is_game_over():
+                round_end_counter += 1
+                if round_end_counter > 1000:
+                    break
                 self.game.start_round()
                 # If after starting round, it's not RL agent's turn, auto-step AIs
-                while not self.game.is_rl_agent_turn() and not self.game.is_game_over():
+                ai_step_counter = 0
+                while not self.game.is_trainee_turn() and not self.game.is_game_over():
+                    ai_step_counter += 1
+                    if ai_step_counter > 1000:
+                        break
                     ai_action = self.game.current_player['agent'].choose_action(
                         self.game.get_game_state(self.game.current_player),
                         self.game.get_legal_moves(self.game.current_player)
@@ -166,39 +178,34 @@ class HighSocietyEnv(gym.Env):
         return obs, reward, done, False, {}
 
     def _calculate_reward(self, done):
-        rl_player = next((player for player in self.game.players if isinstance(player['agent'], RLagent)), None)
-        if self.game._terminate_episode == True: # Punishment for illegal moves
+        # Reward logic is now based on player index 0 (the RL agent during training)
+        if self.game._terminate_episode == True:  # Punishment for illegal moves
             return -100.0
-        
+
         elif done:
-            if isinstance(self.game.winner['agent'], RLagent): # Checks if winner is RLagent
-                if max(self.game.players_scores) == 0: # Blocks strategy of winning by always passing
+            # Check if player 0 is the winner
+            if self.game.winner is not None and self.game.players[0] == self.game.winner:
+                if max(self.game.players_scores) == 0:  # Blocks strategy of winning by always passing
                     return -100.0
                 else:
                     return 1.0
             else:
                 return -1.0
-        
-        elif rl_player is not None:
-            if len(rl_player['money']) == 1:
-                return rl_player['money'] * (-1)
+
+        else:
+            # Ongoing game: small reward for being in a good position
+            if self.game.highest_score_non_lowest_money is not None and self.game.players[0] == self.game.highest_score_non_lowest_money:
+                return 0.1
+            elif self.game.poorest_player is not None and self.game.players[0] == self.game.poorest_player:
+                if self.game.player_with_highest_score is not None and self.game.players[0] == self.game.player_with_highest_score:
+                    if self.game.number_of_red_cards == 1:
+                        return -0.1
+                    return 0.0
+                else:
+                    # Negative reward scaled by number of red cards
+                    return -0.1 * (1/self.game.number_of_red_cards) if self.game.number_of_red_cards else 0.0
             else:
-                return sum(rl_player['money']) * (-1)
-        else: return 0.0
-
-
-
-            # if isinstance(self.game.highest_score_non_lowest_money['agent'], RLagent):
-            #     return 0.1
-            # elif isinstance(self.game.poorest_player['agent'], RLagent):
-            #     if isinstance(self.game.player_with_highest_score['agent'], RLagent):
-            #         if self.game.number_of_red_cards == 1:
-            #             return -0.1
-            #         return 0.0
-            #     else:
-            #         return -0.1 * (1/self.game.number_of_red_cards)
-            # else:
-            #     return 0.0
+                return 0.0
 
     def _empty_observation(self):
         return {

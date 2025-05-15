@@ -3,7 +3,6 @@
 import random # To shuffle deck
 import itertools # To gain all possible combinations of bids
 import logging
-from agents import RLagent
 
 
 logging.basicConfig( # Logging is used to stop print statements from displaying, while training and evaluating models
@@ -89,16 +88,15 @@ class HighSocietyGame:
             return 'awaiting_human', player
         # After the move, print what the player did
         result = self.apply_move(player, action)
-        if not result and isinstance(player['agent'], RLagent):
-            logger.debug(f"Illegal move by {player['player_name']}: {action}")
-            self._terminate_episode = True
-            return 'illegal', player
         if not result:
             if isinstance(player['agent'], HumanAgent):
                 logger.debug(f"Invalid move by {player['player_name']}: {action}. Please try again.")
                 return 'invalid_human', player
             else:
-                logger.debug(f"Invalid move by {player['player_name']}: {action}")
+                player['player_state'] = 'pass'  # Remove from bidding after illegal move
+                logger.debug(f"Illegal move by {player['player_name']} (type: {type(player['agent']).__name__}): {action}")
+                self._terminate_episode = True
+                return 'illegal', player
         # Only print bid/pass info after the move
         if result:
             if action == 'pass':
@@ -210,12 +208,9 @@ class HighSocietyGame:
             if (player['score'] > self.highest_score_non_lowest_money['score']) and player_money > poorest_player_money:
                 self.highest_score_non_lowest_money = player
 
-    def is_rl_agent_turn(self): # Returns True if the current player is the RL agent
-        return isinstance(self.current_player['agent'], RLagent)
-
     def is_game_over(self):
         if self._terminate_episode == True:
-            logger.debug("Game ends, becouse RLagent made invalid move")
+            logger.debug("Game ends, becouse bot made invalid move")
             return True
         return self.number_of_red_cards == 0
 
@@ -284,4 +279,8 @@ class HighSocietyGame:
                 score /= 2
         
         return score
+    
+    def is_trainee_turn(self):
+        # RL agent is always player 0 during training
+        return self.current_player == self.players[0]
 
