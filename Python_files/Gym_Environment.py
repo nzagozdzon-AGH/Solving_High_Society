@@ -152,6 +152,7 @@ class HighSocietyEnv(gym.Env):
         return obs, reward, done, False, {}
 
     def _calculate_reward(self, done):
+        rl_player = next((player for player in self.game.players if isinstance(player['agent'], RLagent)), None)
         if self.game._terminate_episode == True: # Punishment for illegal moves
             return -100.0
         
@@ -162,20 +163,28 @@ class HighSocietyEnv(gym.Env):
                 else:
                     return 1.0
             else:
-                return -5.0
+                return -1.0
         
-        else:
-            if isinstance(self.game.highest_score_non_lowest_money['agent'], RLagent):
-                return 0.1
-            elif isinstance(self.game.poorest_player['agent'], RLagent):
-                if isinstance(self.game.player_with_highest_score['agent'], RLagent):
-                    if self.game.number_of_red_cards == 1:
-                        return -0.1
-                    return 0.0
-                else:
-                    return -0.1 * (1/self.game.number_of_red_cards)
+        elif rl_player is not None:
+            if len(rl_player['money']) == 1:
+                return rl_player['money'] * (-1)
             else:
-                return 0.0
+                return sum(rl_player['money']) * (-1)
+        else: return 0.0 
+
+
+
+            # if isinstance(self.game.highest_score_non_lowest_money['agent'], RLagent):
+            #     return 0.1
+            # elif isinstance(self.game.poorest_player['agent'], RLagent):
+            #     if isinstance(self.game.player_with_highest_score['agent'], RLagent):
+            #         if self.game.number_of_red_cards == 1:
+            #             return -0.1
+            #         return 0.0
+            #     else:
+            #         return -0.1 * (1/self.game.number_of_red_cards)
+            # else:
+            #     return 0.0
 
     def _empty_observation(self):
         return {
