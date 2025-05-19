@@ -178,34 +178,37 @@ class HighSocietyEnv(gym.Env):
         return obs, reward, done, False, {}
 
     def _calculate_reward(self, done):
-        # Reward logic is now based on player index 0 (the RL agent during training)
+        # Reward logic is now based on player index 0
         if self.game._terminate_episode == True:  # Punishment for illegal moves
-            return -100.0
+            return -1000.0
 
         elif done:
             # Check if player 0 is the winner
             if self.game.winner is not None and self.game.players[0] == self.game.winner:
-                if max(self.game.players_scores) == 0:  # Blocks strategy of winning by always passing
-                    return -100.0
-                else:
-                    return 1.0
+                return 100.0
             else:
-                return -1.0
+                return -10.0
 
         else:
-            # Ongoing game: small reward for being in a good position
-            if self.game.highest_score_non_lowest_money is not None and self.game.players[0] == self.game.highest_score_non_lowest_money:
-                return 0.1
-            elif self.game.poorest_player is not None and self.game.players[0] == self.game.poorest_player:
-                if self.game.player_with_highest_score is not None and self.game.players[0] == self.game.player_with_highest_score:
-                    if self.game.number_of_red_cards == 1:
-                        return -0.1
-                    return 0.0
-                else:
-                    # Negative reward scaled by number of red cards
-                    return -0.1 * (1/self.game.number_of_red_cards) if self.game.number_of_red_cards else 0.0
-            else:
-                return 0.0
+            # Intermediate rewards
+            reward = 0.0
+            
+            # Encourage bidding (spending money)
+            money_left = sum(self.game.players[0]['money'])
+            if self.game.poorest_player != self.game.players[0]:
+                reward -= 0.2 * money_left  # Penalize hoarding money
+            
+            # Reward/punish relative position
+            if self.game.players[0] == self.game.highest_score_non_lowest_money:
+                reward += 2.0  # Strong reward for leading without being poorest
+            elif self.game.players[0] == self.game.poorest_player:
+                reward -= 2.0  # Penalty for being poorest
+            
+            # Slight penalty for holding red cards (adjust based on game dynamics)
+            red_cards = self.game.number_of_red_cards
+            reward -= 0.1 * red_cards
+            
+            return reward
 
     def _empty_observation(self):
         return {
@@ -225,6 +228,3 @@ class HighSocietyEnv(gym.Env):
 
     def _handle_agent_action(self, move):
         self.ai_agents[0].last_action = move
-
-    def _is_agent_turn(self):
-        return True
