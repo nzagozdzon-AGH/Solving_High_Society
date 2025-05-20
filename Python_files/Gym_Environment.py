@@ -31,7 +31,7 @@ class HighSocietyEnv(gym.Env):
         self.action_space = spaces.Discrete(len(self.possible_moves))
         self.observation_space = self._create_observation_space()
         self.game = None
-        self.mask = np.zeros(self.action_space.n, dtype=np.float32) # Mask for masking actions. It's here initialized to save computation time.
+        # self.mask = np.zeros(self.action_space.n, dtype=np.float32) # Mask for masking actions. It's here initialized to save computation time.
 
     def _create_move_mapping(self):
         return {
@@ -87,7 +87,7 @@ class HighSocietyEnv(gym.Env):
 
     def _create_action_mask(self):
         # Initialize mask with zeros for all possible actions
-        mask = self.mask
+        mask = np.zeros(self.action_space.n, dtype=np.float32)
         
         # If game hasn't started or is over, return all-zero mask
         if not self.game.players:
@@ -121,6 +121,8 @@ class HighSocietyEnv(gym.Env):
         return encoding / 3  # Max 3 copies of any card
     
     def reset(self, *, seed: Optional[int] = None, options: Optional[dict] = None) -> Tuple[Dict, Dict]:
+        # Reset step counter for dynamic punishment
+        self._episode_steps = 0
         super().reset(seed=seed)
         self.num_players = random.randint(3, 5)
         self.player_names = [f"Player_{i}" for i in range(self.num_players)]
@@ -141,6 +143,8 @@ class HighSocietyEnv(gym.Env):
         return self._get_observation(), {}
 
     def step(self, action_idx: int) -> Tuple[Dict, float, bool, bool, Dict]:
+        # Count this agent step for punishment scaling
+        self._episode_steps += 1
         move = self.action_to_move[action_idx]
         self._handle_agent_action(move)
         done = False
@@ -148,8 +152,10 @@ class HighSocietyEnv(gym.Env):
         if not self.game.is_game_over():
             result, _ = self.game.step(move)
             if result == 'illegal':
+                # Episode ends on illegal move
                 done = True
                 obs = self._get_observation()
+                # Apply scaled punishment for illegal move
                 reward = self._calculate_reward(done)
                 return obs, reward, done, False, {}
             # If round ended, start next round if game not over
@@ -179,12 +185,15 @@ class HighSocietyEnv(gym.Env):
 
     def _calculate_reward(self, done):
         # Reward logic is now based on player index 0
-        if self.game._terminate_episode == True:  # Punishment for illegal moves
+        if self.game._terminate_episode:  # Punishment for illegal moves
+            # Scale penalty by number of steps taken (higher if early failure)
+            if hasattr(self, '_episode_steps') and self._episode_steps > 0:
+                return -1000.0 / (self._episode_steps)**2
             return -1000.0
 
         elif done:
             # Check if player 0 is the winner
-            if self.game.winner is not None and self.game.players[0] == self.game.winner:
+            if self.game.players[0] == self.game.winner:
                 return 100.0
             else:
                 return -10.0
@@ -196,17 +205,13 @@ class HighSocietyEnv(gym.Env):
             # Encourage bidding (spending money)
             money_left = sum(self.game.players[0]['money'])
             if self.game.poorest_player != self.game.players[0]:
-                reward -= 0.2 * money_left  # Penalize hoarding money
+                reward -= 0.02 * money_left  # Penalize hoarding money
             
             # Reward/punish relative position
             if self.game.players[0] == self.game.highest_score_non_lowest_money:
                 reward += 2.0  # Strong reward for leading without being poorest
-            elif self.game.players[0] == self.game.poorest_player:
-                reward -= 2.0  # Penalty for being poorest
-            
-            # Slight penalty for holding red cards (adjust based on game dynamics)
-            red_cards = self.game.number_of_red_cards
-            reward -= 0.1 * red_cards
+            elif (self.game.players[0] == self.game.poorest_player) and self.game.player_with_highest_score != self.game.players[0]:
+                reward -= 1.0  # Penalty for being poorest
             
             return reward
 
