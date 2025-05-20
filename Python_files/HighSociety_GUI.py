@@ -149,7 +149,11 @@ class HighSocietyGUI:
     def load_card_images(self):
         for filename in os.listdir(self.graphics_path):
             if filename.endswith('.jpg'):
-                key = filename.split('-')[0]
+                # Derive card key by removing extension and stripping '-resized' suffixes
+                base = filename[:-4]  # remove .jpg
+                while base.endswith('-resized'):
+                    base = base[:-8]
+                key = base
                 path = os.path.join(self.graphics_path, filename)
                 img = Image.open(path).resize((100,150))
                 self.card_images[key] = ImageTk.PhotoImage(img)
