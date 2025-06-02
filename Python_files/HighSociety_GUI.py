@@ -1,6 +1,6 @@
 # File that holds the GUI for the High Society game
 from High_Society import HighSocietyGame
-from agents import HumanAgent, RandomAI, RulesBasedAgent, RLagent
+from agents import HumanAgent, RandomAI, RulesBasedAgent
 
 import tkinter as tk
 from tkinter import ttk, messagebox
@@ -20,6 +20,11 @@ class SetupWindow:
         # Initial player number selection
         self.frame = tk.Frame(self.master)
         self.frame.pack(padx=20, pady=20)
+        # Displays HS logo above the player-count buttons
+        logo_path = os.path.join(os.path.dirname(__file__), '..', 'Graphics', 'logo_HS.jpg')
+        logo_img = Image.open(logo_path).resize((200, 200))
+        self.logo_photo = ImageTk.PhotoImage(logo_img)
+        tk.Label(self.frame, image=self.logo_photo).pack(pady=(0,10))
         
         tk.Label(self.frame, text="Choose number of players:").pack()
         for n in [3, 4, 5]:
@@ -55,7 +60,7 @@ class SetupWindow:
             tk.Label(self.frame, text=f"Player {i+1}").grid(row=row, column=0)
             option = ttk.Combobox(
                 self.frame, textvariable=var,
-                values=["HumanAgent", "RLagent", "RandomAI", "RulesBasedAgent"],
+                values=["HumanAgent", "RandomAI", "RulesBasedAgent"],
                 state="readonly"
             )
             option.grid(row=row, column=1, pady=2)
@@ -90,7 +95,7 @@ class SetupWindow:
 
     def validate_selection(self):
         # Ensure each slot is selected
-        if any(var.get() not in ["HumanAgent", "RLagent", "RandomAI", "RulesBasedAgent"]
+        if any(var.get() not in ["HumanAgent", "RandomAI", "RulesBasedAgent"]
                for var in self.agent_vars):
             self.error_label.config(text="Please select an agent type for all players")
             return
@@ -104,7 +109,6 @@ class SetupWindow:
     def start_game(self):
         mapping = {
             "HumanAgent": HumanAgent,
-            "RLagent": RLagent,
             "RandomAI": RandomAI,
             "RulesBasedAgent": RulesBasedAgent
         }
