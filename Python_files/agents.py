@@ -63,6 +63,11 @@ class RLagent(BaseAgent):
         self.env = env
 
     def choose_action(self, game_state, legal_moves):
-        obs = self.env._get_observation() # 1) env._get_observation will read from game_state via self.env.game
-        action, _ = self.model.predict(obs, action_masks=obs["action_mask"]) # 2) ask the model to pick (it will respect obs["action_mask"])
-        return self.env.action_to_move[int(action)] # 3) return the raw move object, not the integer
+        # Unwrap ActionMasker to get the original environment
+        raw_env = getattr(self.env, 'env', self.env)
+        # Get observation dict including action_mask
+        obs = raw_env._get_observation()
+        # Predict an action index using the model and mask illegal actions
+        action_idx, _ = self.model.predict(obs, action_masks=obs['action_mask'], deterministic=True)
+        # Map the action index back to a move
+        return raw_env.action_to_move[int(action_idx)]

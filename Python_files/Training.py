@@ -16,6 +16,7 @@ from stable_baselines3.common.vec_env import SubprocVecEnv # He is speeding up t
 from sb3_contrib import MaskablePPO
 from sb3_contrib.common.maskable.policies import MaskableMultiInputActorCriticPolicy
 from sb3_contrib.common.wrappers import ActionMasker
+from stable_baselines3.common.monitor import Monitor  # Episode monitoring
 
 # Local application/library specific imports
 from Gym_Environment import HighSocietyEnv
@@ -26,15 +27,15 @@ MODEL_NAME_PREFIX = "hs_model"
 FINAL_MODEL_SAVE_NAME = "high_society_trained_final"
 
 # Hyperparameters
-LEARNING_RATE = 3e-4
+LEARNING_RATE = 1e-4
 ENTHROPY = 0.1 # How much model explores (def = 0.01)
 N_STEPS = 64 # After how many actions agent learns
-BATCH_SIZE = 64 # Size of mini batch, so AI can quicker compute new nural network weights
+BATCH_SIZE = 32 # Size of mini batch, so AI can quicker compute new nural network weights
 N_EPOCHS = 4 # How many times it takes information from batches
 FEATURES_DIM = 256  # Output dimension of the feature extractor
 NET_ARCH_PI = [256, 256]  # Policy network architecture after feature extraction
 NET_ARCH_VF = [256, 256]  # Value network architecture after feature extraction
-TOTAL_TIMESTEPS = 150_000
+TOTAL_TIMESTEPS = 200_000
 CHECKPOINT_SAVE_FREQ = 500_000 # How often to save model
 
 
@@ -128,18 +129,12 @@ class CustomFeaturesExtractor(BaseFeaturesExtractor):
 
 def make_env(env_id, rank, seed=0): #Utility function for multiprocessed env.
     def _init():
-        # Create your environment instance inside this function
-        # Pass seed + rank to the environment reset for reproducibility
         env = HighSocietyEnv(num_players=random.randint(3, 5))
 
-        # Apply wrappers *inside* _init()
-        def mask_fn(env):
-             return env.unwrapped._create_action_mask()
-        env = ActionMasker(env, mask_fn)
+        # Wrap env with ActionMasker to enforce legal actions
+        env = ActionMasker(env, lambda e: e.unwrapped._create_action_mask())
 
-        # Call reset here with seed
-        env.reset(seed=seed + rank) # Use a unique seed for each environment instance
-
+        env.reset(seed=seed + rank)
         return env
     return _init
 
@@ -147,11 +142,12 @@ def train_agent():
     n_envs = 4 # For Standard_F4s_v2 (my CPU)
 
     print(f"Creating {n_envs} parallel environments...")
-    env = SubprocVecEnv([make_env("HighSocietyEnv", i, seed=0) for i in range(n_envs)])
+    # Create and monitor each sub-environment
+    env_fns = [make_env("HighSocietyEnv", i, seed=0) for i in range(n_envs)]
+    monitored_envs = [lambda fn=fn: Monitor(fn()) for fn in env_fns]
+    env = SubprocVecEnv(monitored_envs)
 
     print("Setting up policy and model...")
-
-
 
     policy_kwargs = dict(
         features_extractor_class=CustomFeaturesExtractor,
@@ -159,20 +155,18 @@ def train_agent():
         net_arch=dict(pi=NET_ARCH_PI, vf=NET_ARCH_VF)
     )
 
-    # Initialize the MaskablePPO model
-    # MaskablePPO is used for environments with action masking.
     model = MaskablePPO(
-        MaskableMultiInputActorCriticPolicy,  # Policy designed for multi-input and masking
+        MaskableMultiInputActorCriticPolicy,
         env,
-        verbose=0,  # 0 for no output, 1 for info, 2 for debug
-        tensorboard_log=None,  # Disable TensorBoard logging
+        verbose=1,
+        tensorboard_log="./logs/hs_ppo_run",
         policy_kwargs=policy_kwargs,
         ent_coef=ENTHROPY,
         learning_rate=LEARNING_RATE,
         n_steps=N_STEPS,
         batch_size=BATCH_SIZE,
         n_epochs=N_EPOCHS,
-        device="cpu" # Force CPU usage
+        device="cpu"
     )
 
     print("Setting up callbacks...")

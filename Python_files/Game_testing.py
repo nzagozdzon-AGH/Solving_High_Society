@@ -2,9 +2,12 @@ from High_Society import HighSocietyGame
 from agents import HumanAgent, RandomAI, RulesBasedAgent, RLagent
 from Gym_Environment import HighSocietyEnv
 from sb3_contrib import MaskablePPO
+from sb3_contrib.common.wrappers import ActionMasker  # add for action masking
 
 model = MaskablePPO.load("model_checkpoints/high_society_trained_final.zip")
 env = HighSocietyEnv()
+# Apply action-masking wrapper for inference
+env = ActionMasker(env, lambda e: e.unwrapped._create_action_mask())
 env.reset()
 
 
@@ -36,8 +39,6 @@ def get_names(list = ai_agent_list):
             list_of_player_names.append(f"Smart_Agent_{d}")
     return list_of_player_names
 
-
-
 def check_winrate():
     original_agents = ai_agent_list.copy()
     winrates = {}
@@ -57,6 +58,13 @@ def check_winrate():
                     current_agent = game.current_player['agent']
                     game_state = game.get_game_state(game.current_player)
                     legal_moves = game.get_legal_moves(game.current_player)
+                    if isinstance(current_agent, RLagent):
+                        # ActionMasker wraps raw env in .env
+                        try:
+                            current_agent.env.env.game = game
+                        except Exception:
+                            print("Error: agent.env.env.game = game")
+                            pass
                     action = current_agent.choose_action(game_state, legal_moves)
                     result, _ = game.step(action)
             if isinstance(game.winner['agent'], RLagent):
@@ -86,7 +94,19 @@ def play_one_round():
                 break
         else:
             # AI agent move
-            action = game.current_player['agent'].choose_action(game.get_game_state(game.current_player), game.get_legal_moves(game.current_player))
+            agent = game.current_player['agent']
+            # If RL agent, synchronize its internal env to the game under test for correct masking
+            if isinstance(agent, RLagent):
+                # ActionMasker wraps raw env in .env
+                try:
+                    agent.env.env.game = game
+                except Exception:
+                    print("Error: agent.env.env.game = game")
+                    pass
+            action = agent.choose_action(
+                game.get_game_state(game.current_player),
+                game.get_legal_moves(game.current_player)
+            )
             result, player = game.step(action)
         # If result == 'round_end', the round will be restarted in the outer loop
 
